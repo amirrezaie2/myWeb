@@ -1,0 +1,470 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - MyWeb</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+        }
+        .sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar-hidden {
+            transform: translateX(-100%);
+        }
+        @media (min-width: 768px) {
+            .sidebar {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Login Page -->
+    <div id="login-page" class="min-h-screen flex items-center justify-center bg-gray-900">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+            <h2 class="text-2xl font-bold text-center mb-6">Admin Login</h2>
+            <form id="login-form" class="space-y-4">
+                <input type="hidden" name="_csrf" id="csrf-token">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" name="username" class="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" name="password" class="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Login</button>
+                <p id="login-error" class="text-red-500 text-sm hidden">Invalid credentials. Please try again.</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="admin-dashboard" class="hidden min-h-screen flex">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-64 bg-gray-800 text-white p-4 sidebar sidebar-hidden md:translate-x-0">
+            <h2 class="text-xl font-bold mb-6">Admin Panel</h2>
+            <nav>
+                <ul class="space-y-2">
+                    <li><button onclick="showSection('home')" class="w-full text-left p-2 hover:bg-gray-700 rounded">Home Content</button></li>
+                    <li><button onclick="showSection('portfolio')" class="w-full text-left p-2 hover:bg-gray-700 rounded">Portfolio</button></li>
+                    <li><button onclick="showSection('blog')" class="w-full text-left p-2 hover:bg-gray-700 rounded">Blog</button></li>
+                    <li><button onclick="showSection('settings')" class="w-full text-left p-2 hover:bg-gray-700 rounded">Settings</button></li>
+                    <li><button onclick="logout()" class="w-full text-left p-2 hover:bg-red-600 rounded">Logout</button></li>
+                </ul>
+            </nav>
+        </div>
+        <!-- Main Content -->
+        <div class="flex-1 p-8">
+            <button id="toggle-sidebar" class="mb-4 p-2 bg-gray-800 text-white rounded md:hidden">Toggle Sidebar</button>
+            <!-- Home Section -->
+            <div id="home-section" class="section hidden">
+                <h2 class="text-2xl font-bold mb-4">Manage Home Page</h2>
+                <form id="home-form" class="space-y-4">
+                    <input type="hidden" name="_csrf" id="home-csrf-token">
+                    <div>
+                        <label for="home-title" class="block text-sm font-medium text-gray-700">Main Title</label>
+                        <input type="text" id="home-title" class="mt-1 p-2 w-full border rounded-md" placeholder="Enter main title">
+                    </div>
+                    <div>
+                        <label for="home-description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="home-description" class="mt-1 p-2 w-full border rounded-md" placeholder="Enter description"></textarea>
+                    </div>
+                    <button type="submit" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Save</button>
+                </form>
+            </div>
+            <!-- Portfolio Section -->
+            <div id="portfolio-section" class="section hidden">
+                <h2 class="text-2xl font-bold mb-4">Manage Portfolio</h2>
+                <button onclick="addPortfolioItem()" class="mb-4 bg-green-600 text-white p-2 rounded-md hover:bg-green-700">Add New Item</button>
+                <div id="portfolio-list" class="space-y-4">
+                    <!-- Dynamic portfolio items will be added here -->
+                </div>
+            </div>
+            <!-- Blog Section -->
+            <div id="blog-section" class="section hidden">
+                <h2 class="text-2xl font-bold mb-4">Manage Blog</h2>
+                <button onclick="addBlogPost()" class="mb-4 bg-green-600 text-white p-2 rounded-md hover:bg-green-700">Add New Post</button>
+                <div id="blog-list" class="space-y-4">
+                    <!-- Dynamic blog posts will be added here -->
+                </div>
+            </div>
+            <!-- Settings Section -->
+            <div id="settings-section" class="section hidden">
+                <h2 class="text-2xl font-bold mb-4">Site Settings</h2>
+                <form id="settings-form" class="space-y-4">
+                    <input type="hidden" name="_csrf" id="settings-csrf-token">
+                    <div>
+                        <label for="site-title" class="block text-sm font-medium text-gray-700">Site Title</label>
+                        <input type="text" id="site-title" class="mt-1 p-2 w-full border rounded-md" placeholder="Enter site title">
+                    </div>
+                    <div>
+                        <label for="meta-description" class="block text-sm font-medium text-gray-700">Meta Description</label>
+                        <textarea id="meta-description" class="mt-1 p-2 w-full border rounded-md" placeholder="Enter meta description"></textarea>
+                    </div>
+                    <button type="submit" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch CSRF token
+        async function fetchCsrfToken() {
+            try {
+                const response = await fetch('/api/csrf-token.php');
+                const data = await response.json();
+                document.getElementById('csrf-token').value = data.csrf_token;
+                document.getElementById('home-csrf-token').value = data.csrf_token;
+                document.getElementById('settings-csrf-token').value = data.csrf_token;
+            } catch (error) {
+                console.error('Error fetching CSRF token:', error);
+            }
+        }
+        fetchCsrfToken();
+
+        // Login Handling
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const csrfToken = document.getElementById('csrf-token').value;
+
+            try {
+                const response = await fetch('/api/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrfToken },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    document.getElementById('login-page').classList.add('hidden');
+                    document.getElementById('admin-dashboard').classList.remove('hidden');
+                    loadContent();
+                } else {
+                    document.getElementById('login-error').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        });
+
+        // Sidebar Toggle for Mobile
+        document.getElementById('toggle-sidebar').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('sidebar-hidden');
+        });
+
+        // Show Section
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(section => section.classList.add('hidden'));
+            document.getElementById(`${sectionId}-section`).classList.remove('hidden');
+        }
+
+        // Load All Content
+        async function loadContent() {
+            await Promise.all([loadHome(), loadPortfolio(), loadBlog(), loadSettings()]);
+        }
+
+        // Load Home Content
+        async function loadHome() {
+            try {
+                const response = await fetch('/api/home.php', { headers: { 'CSRF-Token': document.getElementById('csrf-token').value } });
+                const data = await response.json();
+                document.getElementById('home-title').value = data.title || '';
+                document.getElementById('home-description').value = data.description || '';
+            } catch (error) {
+                console.error('Error loading home content:', error);
+            }
+        }
+
+        // Save Home Content
+        document.getElementById('home-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('home-title').value;
+            const description = document.getElementById('home-description').value;
+            try {
+                const response = await fetch('/api/home.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('home-csrf-token').value },
+                    body: JSON.stringify({ title, description })
+                });
+                if (response.ok) {
+                    alert('Home content saved!');
+                }
+            } catch (error) {
+                console.error('Error saving home content:', error);
+            }
+        });
+
+        // Load Portfolio
+        async function loadPortfolio() {
+            try {
+                const response = await fetch('/api/portfolio.php', { headers: { 'CSRF-Token': document.getElementById('csrf-token').value } });
+                const items = await response.json();
+                const portfolioList = document.getElementById('portfolio-list');
+                portfolioList.innerHTML = '';
+                items.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'border p-4 rounded-md';
+                    itemDiv.innerHTML = `
+                        <input type="text" value="${item.title}" class="mb-2 p-2 w-full border rounded-md">
+                        <textarea class="mb-2 p-2 w-full border rounded-md">${item.description}</textarea>
+                        <button onclick="updatePortfolioItem(${item.id}, this)" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Update</button>
+                        <button onclick="deletePortfolioItem(${item.id}, this)" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-700">Delete</button>
+                    `;
+                    portfolioList.appendChild(itemDiv);
+                });
+            } catch (error) {
+                console.error('Error loading portfolio:', error);
+            }
+        }
+
+        // Add Portfolio Item
+        function addPortfolioItem() {
+            const portfolioList = document.getElementById('portfolio-list');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'border p-4 rounded-md';
+            itemDiv.innerHTML = `
+                <input type="text" placeholder="Item Title" class="mb-2 p-2 w-full border rounded-md">
+                <textarea placeholder="Item Description" class="mb-2 p-2 w-full border rounded-md"></textarea>
+                <button onclick="savePortfolioItem(this)" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Save</button>
+                <button onclick="this.parentElement.remove()" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-700">Cancel</button>
+            `;
+            portfolioList.appendChild(itemDiv);
+        }
+
+        // Save Portfolio Item
+        async function savePortfolioItem(button) {
+            const itemDiv = button.parentElement;
+            const title = itemDiv.querySelector('input').value;
+            const description = itemDiv.querySelector('textarea').value;
+            try {
+                const response = await fetch('/api/portfolio.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('csrf-token').value },
+                    body: JSON.stringify({ title, description })
+                });
+                if (response.ok) {
+                    loadPortfolio();
+                }
+            } catch (error) {
+                console.error('Error saving portfolio item:', error);
+            }
+        }
+
+        // Update Portfolio Item
+        async function updatePortfolioItem(id, button) {
+            const itemDiv = button.parentElement;
+            const title = itemDiv.querySelector('input').value;
+            const description = itemDiv.querySelector('textarea').value;
+            try {
+                const response = await fetch(`/api/portfolio.php?id=${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('csrf-token').value },
+                    body: JSON.stringify({ title, description })
+                });
+                if (response.ok) {
+                    loadPortfolio();
+                }
+            } catch (error) {
+                console.error('Error updating portfolio item:', error);
+            }
+        }
+
+        // Delete Portfolio Item
+        async function deletePortfolioItem(id, button) {
+            try {
+                const response = await fetch(`/api/portfolio.php?id=${id}`, {
+                    method: 'DELETE',
+                    headers: { 'CSRF-Token': document.getElementById('csrf-token').value }
+                });
+                if (response.ok) {
+                    loadPortfolio();
+                }
+            } catch (error) {
+                console.error('Error deleting portfolio item:', error);
+            }
+        }
+
+        // Load Blog
+        async function loadBlog() {
+            try {
+                const response = await fetch('/api/blog.php', { headers: { 'CSRF-Token': document.getElementById('csrf-token').value } });
+                const posts = await response.json();
+                const blogList = document.getElementById('blog-list');
+                blogList.innerHTML = '';
+                posts.forEach(post => {
+                    const postDiv = document.createElement('div');
+                    postDiv.className = 'border p-4 rounded-md';
+                    postDiv.innerHTML = `
+                        <input type="text" value="${post.title}" class="mb-2 p-2 w-full border rounded-md">
+                        <textarea class="mb-2 p-2 w-full border rounded-md">${post.content}</textarea>
+                        <button onclick="updateBlogPost(${post.id}, this)" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Update</button>
+                        <button onclick="deleteBlogPost(${post.id}, this)" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-700">Delete</button>
+                    `;
+                    blogList.appendChild(postDiv);
+                });
+            } catch (error) {
+                console.error('Error loading blog:', error);
+            }
+        }
+
+        // Add Blog Post
+        function addBlogPost() {
+            const blogList = document.getElementById('blog-list');
+            const postDiv = document.createElement('div');
+            postDiv.className = 'border p-4 rounded-md';
+            postDiv.innerHTML = `
+                <input type="text" placeholder="Post Title" class="mb-2 p-2 w-full border rounded-md">
+                <textarea placeholder="Post Content" class="mb-2 p-2 w-full border rounded-md"></textarea>
+                <button onclick="saveBlogPost(this)" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Save</button>
+                <button onclick="this.parentElement.remove()" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-700">Cancel</button>
+            `;
+            blogList.appendChild(postDiv);
+        }
+
+        // Save Blog Post
+        async function saveBlogPost(button) {
+            const postDiv = button.parentElement;
+            const title = postDiv.querySelector('input').value;
+            const content = postDiv.querySelector('textarea').value;
+            try {
+                const response = await fetch('/api/blog.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('csrf-token').value },
+                    body: JSON.stringify({ title, content })
+                });
+                if (response.ok) {
+                    loadBlog();
+                }
+            } catch (error) {
+                console.error('Error saving blog post:', error);
+            }
+        }
+
+        // Update Blog Post
+        async function updateBlogPost(id, button) {
+            const postDiv = button.parentElement;
+            const title = postDiv.querySelector('input').value;
+            const content = postDiv.querySelector('textarea').value;
+            try {
+                const response = await fetch(`/api/blog.php?id=${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('csrf-token').value },
+                    body: JSON.stringify({ title, content })
+                });
+                if (response.ok) {
+                    loadBlog();
+                }
+            } catch (error) {
+                console.error('Error updating blog post:', error);
+            }
+        }
+
+        // Delete Blog Post
+        async function deleteBlogPost(id, button) {
+            try {
+                const response = await fetch(`/api/blog.php?id=${id}`, {
+                    method: 'DELETE',
+                    headers: { 'CSRF-Token': document.getElementById('csrf-token').value }
+                });
+                if (response.ok) {
+                    loadBlog();
+                }
+            } catch (error) {
+                console.error('Error deleting blog post:', error);
+            }
+        }
+
+        // Load Settings
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings.php', { headers: { 'CSRF-Token': document.getElementById('csrf-token').value } });
+                const data = await response.json();
+                document.getElementById('site-title').value = data.site_title || '';
+                document.getElementById('meta-description').value = data.meta_description || '';
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        // Save Settings
+        document.getElementById('settings-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const siteTitle = document.getElementById('site-title').value;
+            const metaDescription = document.getElementById('meta-description').value;
+            try {
+                const response = await fetch('/api/settings.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': document.getElementById('settings-csrf-token').value },
+                    body: JSON.stringify({ site_title: siteTitle, meta_description: metaDescription })
+                });
+                if (response.ok) {
+                    alert('Settings saved!');
+                }
+            } catch (error) {
+                console.error('Error saving settings:', error);
+            }
+        });
+
+        // Logout
+        async function logout() {
+            try {
+                await fetch('/api/logout.php', {
+                    method: 'POST',
+                    headers: { 'CSRF-Token': document.getElementById('csrf-token').value }
+                });
+                document.getElementById('admin-dashboard').classList.add('hidden');
+                document.getElementById('login-page').classList.remove('hidden');
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

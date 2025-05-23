@@ -1,0 +1,122 @@
+<?php
+// Database Configuration
+define('DB_HOST', 'YOUR_MYSQL_HOST');      // Replace with your MySQL host (e.g., 'localhost' or your hosting provider's host)
+define('DB_USER', 'YOUR_MYSQL_USERNAME');  // Replace with your MySQL username
+define('DB_PASS', 'YOUR_MYSQL_PASSWORD');  // Replace with your MySQL password
+define('DB_NAME', 'YOUR_MYSQL_DATABASE');  // Replace with your MySQL database name
+
+// Session Configuration
+define('SESSION_SECRET', 'your-secure-secret-key'); // Replace with a secure, random string (e.g., generated with openssl rand -base64 32)
+
+// Initialize Database Connection
+function getDbConnection() {
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    if ($conn->connect_error) {
+        die(json_encode(['success' => false, 'message' => 'Database connection failed']));
+    }
+    return $conn;
+}
+
+// Initialize Database Tables
+function initializeDatabase() {
+    $conn = getDbConnection();
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL
+        )
+    ");
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS home (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title TEXT,
+            description TEXT
+        )
+    ");
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS portfolio (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS blog (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            site_title TEXT,
+            meta_description TEXT
+        )
+    ");
+    $conn->close();
+}
+initializeDatabase();
+
+// Security Headers
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+
+// Session Configuration
+session_start([
+    'cookie_secure' => isset($_SERVER['HTTPS']),
+    'cookie_httponly' => true,
+    'cookie_samesite' => 'Strict',
+    'cookie_lifetime' => 24 * 60 * 60 // 24 hours
+]);
+
+// Rate Limiting
+function checkRateLimit() {
+    if (!isset($_SESSION['request_count'])) {
+        $_SESSION['request_count'] = 0;
+        $_SESSION['request_time'] = time();
+    }
+    if (time() - $_SESSION['request_time'] > 15 * 60) {
+        $_SESSION['request_count'] = 0;
+        $_SESSION['request_time'] = time();
+    }
+    $_SESSION['request_count']++;
+    if ($_SESSION['request_count'] > 100) {
+        http_response_code(429);
+        die(json_encode(['success' => false, 'message' => 'Too many requests']));
+    }
+}
+
+// CSRF Token Generation
+function generateCsrfToken() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+// CSRF Token Validation
+function validateCsrfToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// Input Sanitization
+function sanitizeInput($data) {
+    if (is_array($data)) {
+        return array_map('sanitizeInput', $data);
+    }
+    $data = trim($data);
+    $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+    $data = filter_var($data, FILTER_SANITIZE_STRING);
+    return $data;
+}
+
+// Authentication Check
+function isAuthenticated() {
+    return isset($_SESSION['user']);
+}
+?>

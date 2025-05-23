@@ -1,0 +1,94 @@
+<?php
+require_once 'config.php';
+checkRateLimit();
+header('Content-Type: application/json');
+
+if (!isAuthenticated()) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
+}
+
+$conn = getDbConnection();
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $result = $conn->query('SELECT * FROM blog ORDER BY created_at DESC');
+    $posts = [];
+    while ($row = $result->fetch_assoc()) {
+        $posts[] = $row;
+    }
+    echo json_encode($posts);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $csrf_token = $_SERVER['HTTP_CSRF_TOKEN'] ?? '';
+    if (!validateCsrfToken($csrf_token)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    $title = sanitizeInput($input['title'] ?? '');
+    $content = sanitizeInput($input['content'] ?? '');
+
+    if (!$title || !$content) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Title and content are required']);
+        exit;
+    }
+
+    $stmt = $conn->prepare('INSERT INTO blog (title, content) VALUES (?, ?)');
+    $stmt->bind_param('ss', $title, $content);
+    $stmt->execute();
+
+    echo json_encode(['success' => true, 'message' => 'Blog post saved']);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+    $csrf_token = $_SERVER['HTTP_CSRF_TOKEN'] ?? '';
+    if (!validateCsrfToken($csrf_token)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+        exit;
+    }
+
+    $id = $_GET['id'] ?? '';
+    $input = json_decode(file_get_contents('php://input'), true);
+    $title = sanitizeInput($input['title'] ?? '');
+    $content = sanitizeInput($input['content'] ?? '');
+
+    if (!$id || !$title || !$content) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'ID, title, and content are required']);
+        exit;
+    }
+
+    $stmt = $conn->prepare('UPDATE blog SET title = ?, content = ? WHERE id = ?');
+    $stmt->bind_param('ssi', $title, $content, $id);
+    $stmt->execute();
+
+    echo json_encode(['success' => true, 'message' => 'Blog post updated']);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    $csrf_token = $_SERVER['HTTP_CSRF_TOKEN'] ?? '';
+    if (!validateCsrfToken($csrf_token)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+        exit;
+    }
+
+    $id = $_GET['id'] ?? '';
+    if (!$id) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'ID is required']);
+        exit;
+    }
+
+    $stmt = $conn->prepare('DELETE FROM blog WHERE id = ?');
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+
+    echo json_encode(['success' => true, 'message' => 'Blog post deleted']);
+} else {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+}
+
+$conn->close();
+?>
